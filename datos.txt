@@ -1,0 +1,68 @@
+usuario Tienda
+password 1234
+
+
+Reportes
+
+1. Reporte Loteria y Chances
+	Reporte de Tiquetes de loteria y Chances
+	Este Reporte permite ver todos los tiquetes generados segun un rango de fechas determinado
+	ademas de su descarga en formato excel. Este reporte deve accederse unicamente por administracion.
+
+	[Fecha venta] 	[Punto de Venta] 	[Padre]	[Sorteo]	[Sorteo Id] 	[Serie] 	[Numero] 	[Cantidad] 	[Monto total] [Transaccion] [Orden] [Codigo Cobro]	[Cedula]	[Correo]
+	SELECT_REPORTE_LOTERIA_CHANCES
+	SELECT IdTiqueteLoteria, IdExterno, ta.IdUsuario, us.NombreCompleto, IssueNumber, Serie, Numero, Cantidad,    
+    	Monto, PayToken, Orden, IdSorteo, DescripcionSorteo, 
+    	case when ProductId = 2 then 'loterias' else 'chances' end as producto, Ganador, Pagado, FechayHora, MontoPremio,
+    	FechaCambioPremio,  OrdenPremio, 
+    	case when pa.NombreCompleto is null then '** NO TIENE **' else pa.NombreCompleto END as Padre, '' as Punto
+	FROM TiquetesLoteria ta
+	left join Usuarios us on us.IdUsuario=ta.IdUsuario
+	left join PadreHijo ph ON ph.IdHijo=ta.IdUsuario
+	left join Usuarios pa on pa.IdUsuario=ph.IdPadre
+	WHERE ta.FechayHora between @desde and @hasta
+	group by ta.Numero;
+
+2. Reporte Venta de Tiquetes
+	Este reporte permite al punto de venta y a los distribuidores y subdistribuidores, ver los
+	tiquetes que se han sido generados por su red. Este reporte debe tener filtro por rango de fechas y descarga en excel.
+
+	[Fecha venta] 	[Punto de Venta] 	[Padre]	[Sorteo] 	[Serie] 	[Numero] 	[Cantidad] 	[Monto total]
+	SELECT_REPORTE_VENTA_TIQUETE
+	set @Desde=cast(D as datetime);
+	set @hasta=cast(H as datetime);
+    set @usuario=U;
+    
+	SELECT FechayHora, padre.NombreCompleto, Serie, Numero, sum(Cantidad) as cantidad, sum(Monto) as monto, DescripcionSorteo
+	FROM TiquetesLoteria ta
+	left join PadreHijo ph ON ph.IdHijo=ta.IdUsuario and case when @usuario=0 then 1 else ph.IdPadre=@usuario end
+    left join Usuarios hijo on hijo.IdUsuario=ph.IdHijo
+	left join Usuarios padre on padre.IdUsuario=ph.IdPadre
+	WHERE ta.FechayHora between @desde and @hasta
+	group by IdHijo, Date(FechayHora), ta.numero
+    order by 1,2,3,4;
+
+3. Hoja de Cobro Loteria y Chances
+	Permite generar el resumen de las ventas de los usuarios , este reporte debe estar disponible para administracion
+	, distribuidores, sub-distribuidores y puntos de venta donde adminitracion debe tener acceso a ver todas las redes
+	, y el resto de usuarios solo debe ver lo que esta debajo de ellosen la gerarquia. Este reporte debe tener filtro por fecha 
+	y formato en excel
+
+	[Usuario] 	[Padre] 	[Ventas total de Loterias y chance] 	[Comision] 	[Resultado] 
+	SELECT_REPORTE_COBRO_LOTERIA_CHANCES
+	set @Desde=cast(D as datetime);
+	set @Hasta=cast(H as datetime);
+    set @Usuario=U;
+
+	SELECT 
+	hijo.NombreCompleto as Usuario
+	, case when padre.IdUsuario is null THEN 'N/A' else padre.NombreCompleto END as Padre
+	,sum(Monto) as VentaTotal
+	,sum(Monto)*hijo.Comision/100 as Comision
+    FROM TiquetesLoteria ta
+	left join PadreHijo ph ON ph.IdHijo=ta.IdUsuario and case when @usuario=0 then 1 else ph.IdPadre=@usuario end
+    left join Usuarios hijo on hijo.IdUsuario=ph.IdHijo
+	left join Usuarios padre on padre.IdUsuario=ph.IdPadre
+	WHERE ta.FechayHora between @Desde and @Hasta
+	GROUP BY ta.IdUsuario,date(FechayHora) 
+	ORDER BY 1,2;
